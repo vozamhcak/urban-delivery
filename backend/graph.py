@@ -66,6 +66,28 @@ class Graph:
         path.reverse()
         return path
 
+    def shortest_path_length(self, start_id: int, end_id: int) -> float:
+        """Вычисляет длину кратчайшего пути между двумя узлами"""
+        import heapq
+
+        dist: Dict[int, float] = {node.id: float("inf") for node in self.network.nodes}
+        dist[start_id] = 0.0
+        pq: List[Tuple[float, int]] = [(0.0, start_id)]
+
+        while pq:
+            d, u = heapq.heappop(pq)
+            if d > dist[u]:
+                continue
+            if u == end_id:
+                return d
+            for v, w in self.adj[u]:
+                nd = d + w
+                if nd < dist[v]:
+                    dist[v] = nd
+                    heapq.heappush(pq, (nd, v))
+
+        return dist.get(end_id, float("inf"))
+
 
 def load_road_network(path: Path) -> RoadNetwork:
     with path.open("r", encoding="utf-8") as f:
