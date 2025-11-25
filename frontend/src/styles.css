@@ -46,10 +46,21 @@ body,
   height: 100%;
   cursor: grab;
   background: #111;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
-.map-view:active {
+.map-view:active,
+.map-view.dragging {
   cursor: grabbing;
+}
+
+/* Интерактивные элементы карты */
+.map-view circle.courier-dot,
+.map-view circle.courier-selected {
+  cursor: pointer;
 }
 
 /* точки на карте */
