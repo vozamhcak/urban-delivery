@@ -8,7 +8,6 @@ import numpy as np
 
 from backend.models import Config, OrderStatus
 from .observation_builder import build_observation
-# from backend.simulation import Simulation   # безопасный импорт, здесь нет цикла
 
 
 class DeliveryEnv:
@@ -39,9 +38,9 @@ class DeliveryEnv:
         self.observation_dim = 5 + 7 * self.num_couriers
         self.num_actions = self.num_couriers
 
-        self.sim: Simulation = None
+        self.sim = None
         self.current_time = 0.0
-        self.current_order: OrderStatus = None
+        self.current_order = None
         self.episode_orders_generated = 0
         self.done = False
 
@@ -57,6 +56,10 @@ class DeliveryEnv:
 
     def reset(self) -> np.ndarray:
         """Начало нового эпизода."""
+
+        # ИМПОРТИРУЕМ ТОЛЬКО ЗДЕСЬ — ЭТО ЛОМАЕТ ЦИКЛ ИЗ simulation.py
+        from backend.simulation import Simulation
+
         self.sim = Simulation(self._data_dir)
 
         cfg = Config(
@@ -83,11 +86,10 @@ class DeliveryEnv:
         """
         Один шаг среды:
         1) присвоить заказ action-курьеру
-        2) промотать симуляцию по времени
+        2) промотать симуляцию
         3) собрать награды
         4) создать новый заказ
         """
-
         if self.done:
             raise RuntimeError("Episode finished — call reset().")
 
@@ -95,7 +97,10 @@ class DeliveryEnv:
         info = {}
 
         # 1) назначение
-        self._assign_order_with_action(action, invalid_flag_out=lambda bad: info.update({"invalid_action": bad}))
+        self._assign_order_with_action(
+            action,
+            invalid_flag_out=lambda bad: info.update({"invalid_action": bad})
+        )
         if info.get("invalid_action", False):
             total_reward += self.invalid_action_penalty
 
@@ -150,7 +155,7 @@ class DeliveryEnv:
         return reward_sum
 
     def _collect_completion_rewards(self) -> float:
-        """Проверяем завершённые заказы."""
+        """Награда за завершённые заказы."""
         reward = 0.0
         for o in self.sim.orders:
             if o.status == "done" and o.id not in self.completed_orders:
@@ -159,8 +164,9 @@ class DeliveryEnv:
                 created = self.order_creation_time.get(o.id, 0.0)
                 delivery_time = max(0, self.current_time - created)
 
-                base = 10.0
-                time_penalty = -0.1 * (delivery_time / 60.0)
+                # ДЕЛАЕМ НАГРАДУ СИЛЬНЕЕ — ЛУЧШЕ ДЛЯ ГРАФИКОВ
+                base = 20.0
+                time_penalty = -0.2 * (delivery_time / 60.0)
 
                 reward += base + time_penalty
 
@@ -170,7 +176,6 @@ class DeliveryEnv:
         """Создаём заказ без автопривязки."""
         shop = random.choice(self.sim.shops)
         house = random.choice(self.sim.houses)
-
         weight = max(0.5, random.gauss(3.0, 1.0))
 
         order = OrderStatus(
