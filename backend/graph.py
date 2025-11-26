@@ -3,7 +3,7 @@ import math
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-from models import RoadNetwork, RoadNode, House, Shop
+from backend.models import RoadNetwork, RoadNode, House, Shop
 
 
 class Graph:

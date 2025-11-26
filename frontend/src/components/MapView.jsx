@@ -33,13 +33,13 @@ export default function MapView({
 
     const containerRect = container.getBoundingClientRect();
     const scaledMapSize = MAP_SIZE * currentScale;
-    
+
     // Дополнительное пространство масштабируется с уровнем зума
     // На максимальном зуме даем больше места для навигации по краям
     // Используем квадратичную зависимость для более плавного увеличения на больших масштабах
     const scaleFactor = Math.pow(currentScale / MAX_SCALE, 1.5);
     const extraSpace = EXTRA_PAN_SPACE * scaleFactor;
-    
+
     // Если карта меньше контейнера, центрируем её
     if (scaledMapSize <= containerRect.width) {
       newOffset.x = (containerRect.width - scaledMapSize) / 2;
@@ -51,7 +51,7 @@ export default function MapView({
       const maxOffsetXExtended = scaledMapSize - containerRect.width + extraSpace;
       newOffset.x = Math.max(minOffsetXExtended, Math.min(maxOffsetXExtended, newOffset.x));
     }
-    
+
     if (scaledMapSize <= containerRect.height) {
       newOffset.y = (containerRect.height - scaledMapSize) / 2;
     } else {
@@ -78,7 +78,7 @@ export default function MapView({
     const isZoomGesture = e.ctrlKey || e.metaKey || Math.abs(e.deltaZ) > 0;
     const hasSignificantHorizontalScroll = Math.abs(e.deltaX) > 10 && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 0.7;
     const isPan = hasSignificantHorizontalScroll && !isZoomGesture;
-    
+
     if (isPan) {
       // Двухпальцевое панорамирование на тачпаде (горизонтальная/вертикальная прокрутка)
       setOffset((prev) => constrainOffset(
@@ -107,7 +107,7 @@ export default function MapView({
       const zoomDelta = e.deltaY * ZOOM_SENSITIVITY;
       const zoomFactor = 1 - zoomDelta;
       let newScale = scale * zoomFactor;
-      
+
       // Ограничиваем масштаб
       if (newScale < MIN_SCALE) newScale = MIN_SCALE;
       if (newScale > MAX_SCALE) newScale = MAX_SCALE;
@@ -127,17 +127,17 @@ export default function MapView({
     // Разрешаем перетаскивание везде, кроме кликов на интерактивные элементы
     // Интерактивные элементы: курьеры (circle с классом courier-dot или courier-selected)
     const target = e.target;
-    const isCourier = 
-      (target.tagName === 'circle' && 
-       (target.classList.contains('courier-dot') || 
-        target.classList.contains('courier-selected'))) ||
+    const isCourier =
+      (target.tagName === 'circle' &&
+        (target.classList.contains('courier-dot') ||
+          target.classList.contains('courier-selected'))) ||
       (target.tagName === 'text' && target.closest('g')?.querySelector('circle.courier-dot, circle.courier-selected'));
-    
+
     // Если клик на курьере, не начинаем перетаскивание (разрешаем выбор курьера)
     if (isCourier) {
       return;
     }
-    
+
     // Предотвращаем выделение текста при перетаскивании
     e.preventDefault();
     dragging.current = true;
@@ -150,12 +150,12 @@ export default function MapView({
     e.preventDefault();
     const dx = e.clientX - lastPos.current.x;
     const dy = e.clientY - lastPos.current.y;
-    
+
     // Если перемещение больше 3 пикселей, считаем это перетаскиванием
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       hasDragged.current = true;
     }
-    
+
     lastPos.current = { x: e.clientX, y: e.clientY };
     setOffset((prev) => constrainOffset(
       { x: prev.x + dx, y: prev.y + dy },
@@ -299,14 +299,14 @@ export default function MapView({
 
     const containerRect = container.getBoundingClientRect();
     const scaledMapSize = MAP_SIZE * scale;
-    
+
     if (scaledMapSize <= containerRect.width) {
       setOffset(prev => ({
         ...prev,
         x: (containerRect.width - scaledMapSize) / 2
       }));
     }
-    
+
     if (scaledMapSize <= containerRect.height) {
       setOffset(prev => ({
         ...prev,
@@ -315,7 +315,7 @@ export default function MapView({
     }
   }, []); // Только при монтировании компонента
 
-  
+
   const activeOrders = orders.filter((o) => o.status !== "done");
   const orderById = new Map(activeOrders.map((o) => [o.id, o]));
 
@@ -328,13 +328,13 @@ export default function MapView({
     nodesById[n.id] = n;
   });
 
-  
+
   let selectedPathPolyline = null;
   let highlightShop = null;
   let highlightHouse = null;
 
   if (selectedCourier) {
-    
+
     const pathNodes = (selectedCourier.path || [])
       .map((id) => nodesById[id])
       .filter(Boolean);
@@ -452,6 +452,19 @@ export default function MapView({
               ? orderById.get(c.current_order_id)
               : null;
 
+            // NEW: аккуратный tooltip с учётом загрузки и веса заказа
+            const currentLoad = (c.current_load || 0).toFixed(1);
+            const maxCapacity = (c.max_capacity || 0).toFixed(1);
+            const tooltip = order
+              ? `Курьер #${c.id}
+Состояние: ${c.state}
+Загрузка: ${currentLoad} / ${maxCapacity} кг
+Текущий заказ #${order.id}, статус: ${order.status}, вес: ${(order.weight || 0).toFixed(1)} кг`
+              : `Курьер #${c.id}
+Состояние: ${c.state}
+Загрузка: ${currentLoad} / ${maxCapacity} кг
+Текущий заказ: нет`;
+
             return (
               <g key={`courier-${c.id}`}>
                 <circle
@@ -473,11 +486,7 @@ export default function MapView({
                 >
                   {c.id}
                 </text>
-                {order && (
-                  <title>
-                    Курьер #{c.id}, заказ #{order.id}, статус {order.status}
-                  </title>
-                )}
+                <title>{tooltip}</title>
               </g>
             );
           })}

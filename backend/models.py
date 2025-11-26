@@ -45,6 +45,11 @@ class Courier(BaseModel):
     path: List[int] = []       # список id road nodes по пути
     path_index: int = 0        # индекс текущей цели в path
 
+    # NEW: вместимость и текущая нагрузка
+    max_capacity: float = 10.0  # кг
+    current_load: float = 0.0   # кг
+
+
 
 class OrderStatus(BaseModel):
     id: int
@@ -52,6 +57,10 @@ class OrderStatus(BaseModel):
     house_id: int
     assigned_courier_id: Optional[int] = None
     status: Literal["waiting", "to_shop", "to_house", "done"] = "waiting"
+    
+    # NEW: вес заказа
+    weight: float = 0.0
+
 
 
 class LogEntry(BaseModel):

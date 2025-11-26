@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from simulation import Simulation
-from models import Config, StateResponse
+from backend.simulation import Simulation
+from backend.models import Config, StateResponse
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -26,6 +26,14 @@ app.mount(
     StaticFiles(directory=DATA_DIR),
     name="static",
 )
+
+
+@app.post("/api/load-neural-agent")
+def load_nn():
+    model_path = "mlenv_checkpoints/dqn_policy.pt"
+    obs_dim = 5 + 7 * sim.config.num_couriers
+    sim.load_neural_agent(model_path, obs_dim, sim.config.num_couriers)
+    return {"status": "ok"}
 
 
 @app.get("/api/state", response_model=StateResponse)

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List
 import numpy as np
 
-from models import (
+from backend.models import (
     House,
     Shop,
     Courier,
@@ -15,8 +15,12 @@ from models import (
     StateResponse,
     QLearningAgent
 )
-from graph import Graph, load_road_network, load_points, attach_nearest_nodes
+from backend.graph import Graph, load_road_network, load_points, attach_nearest_nodes
 
+from mlenv.env.observation_builder import build_observation
+
+from backend.neural_agent import NeuralCourierAgent
+from mlenv.env.observation_builder import build_observation
 
 class Simulation:
     def __init__(self, data_dir: Path):
@@ -34,7 +38,12 @@ class Simulation:
         self.logs: List[LogEntry] = []
         
         # RL агент
-        self.agent = QLearningAgent()
+        # self.agent = QLearningAgent()
+        # ...
+        self.agent = None  # заменим ниже
+        self.use_neural_agent = False
+        self.neural_agent = None
+
         
         # Статистика для наград
         self.order_statistics = {
@@ -47,6 +56,28 @@ class Simulation:
         self.next_order_id = 1
         self._init_couriers()
         self.last_time = time.time()
+        
+    def _build_neural_observation(self, order: OrderStatus) -> np.ndarray:
+        """
+        Делает observation в формате среды mlenv, чтобы нейросетевой агент
+        принимал решение идентично тому, как его обучали.
+        """
+        return build_observation(
+            self,
+            order,
+            num_couriers=self.config.num_couriers
+        )
+        
+    def load_neural_agent(self, path: str, obs_dim: int, num_couriers: int):
+        self.neural_agent = NeuralCourierAgent(
+            model_path=path,
+            obs_dim=obs_dim,
+            num_couriers=num_couriers,
+            device="cpu"
+        )
+        self.use_neural_agent = True
+        self.log("Нейросетевой агент загружен.")
+
 
     def _init_couriers(self):
         self.couriers = []
@@ -67,16 +98,24 @@ class Simulation:
 
     def set_config(self, cfg: Config):
         self.config = cfg
-        # Обновляем параметры агента
-        self.agent.learning_rate = cfg.learning_rate
-        self.agent.discount_factor = cfg.discount_factor
-        self.agent.exploration_rate = cfg.exploration_rate
-        
+
+        # Инициализация курьеров
         self._init_couriers()
+
+        # Если используется старый QLearningAgent — обновить его параметры
+        if self.agent is not None:
+            if hasattr(self.agent, "learning_rate"):
+                self.agent.learning_rate = cfg.learning_rate
+            if hasattr(self.agent, "discount_factor"):
+                self.agent.discount_factor = cfg.discount_factor
+            if hasattr(self.agent, "exploration_rate"):
+                self.agent.exploration_rate = cfg.exploration_rate
+
         self.log(
-            f"Конфигурация обновлена: курьеров={cfg.num_couriers}, v={cfg.courier_speed} м/с, "
+            f"Конфигурация обновлена: курьеров={cfg.num_couriers}, скорость={cfg.courier_speed} м/с, "
             f"заказов/мин={cfg.orders_per_minute:.2f}"
         )
+
 
     def log(self, msg: str):
         self.logs.append(LogEntry(ts=time.time(), message=msg))
@@ -94,10 +133,15 @@ class Simulation:
     def create_random_order(self):
         shop = random.choice(self.shops)
         house = random.choice(self.houses)
+        
+        # NEW: случайный вес ~ 2–4 кг, с редкими выбросами
+        weight = max(0.5, random.gauss(3.0, 1.0))  # среднее ~3 кг, sd=1, но не меньше 0.5
+        
         order = OrderStatus(
             id=self.next_order_id,
             shop_id=shop.id,
             house_id=house.id,
+            weight=weight,
         )
         self.next_order_id += 1
         self.orders.append(order)
@@ -105,9 +149,31 @@ class Simulation:
         self.order_statistics['order_start_times'][order.id] = time.time()
         
         self.log(
-            f"Создан заказ #{order.id}: магазин {order.shop_id} → дом {order.house_id}"
+            f"Создан заказ #{order.id}: магазин {order.shop_id} → дом {order.house_id}, "
+            f"вес ≈{order.weight:.1f} кг"
         )
+
+        # Назначаем заказ с учётом вместимости
         self.assign_order_with_rl(order)
+
+    def _assign_order_to_courier(self, courier: Courier, order: OrderStatus):
+        """Акуратное назначение заказа конкретному курьеру."""
+        weight = getattr(order, "weight", 0.0)
+
+        order.assigned_courier_id = courier.id
+        courier.current_load += weight
+
+        # Если курьер свободен → сразу начинаем поездку за заказом
+        if courier.current_order_id is None:
+            self._start_order_for_courier(courier, order)
+        else:
+            # Иначе заказ в очередь курьера
+            order.status = "waiting"
+            self.log(
+                f"Курьер #{courier.id} добавил в очередь заказ #{order.id} "
+                f"(нагрузка {courier.current_load:.1f}/{courier.max_capacity:.1f} кг)"
+            )
+
 
     def _calculate_distance_cost(self, courier: Courier, order: OrderStatus) -> float:
         """Рассчитывает стоимость назначения курьера на заказ на основе расстояний"""
@@ -126,49 +192,52 @@ class Simulation:
         return dist_to_shop + dist_shop_to_house
 
     def assign_order_with_rl(self, order: OrderStatus):
-        """Распределение заказа с использованием RL"""
-        idle_couriers = [c for c in self.couriers if c.state == "idle"]
-        if not idle_couriers:
-            self.log(f"Заказ #{order.id} ожидает свободного курьера")
+        """
+        Выбор курьера.
+        Если включён нейросетевой агент — используется он.
+        Если нет — fallback: рандом среди тех, кто подходит по вместимости.
+        """
+        # Если заказ уже назначен или завершён — ничего не делаем
+        if order.assigned_courier_id is not None or order.status == "done":
             return
 
-        shop = self._shop_by_id(order.shop_id)
-        house = self._house_by_id(order.house_id)
-        
-        # Создаем ключ состояния
-        state_key = self.agent.get_state_key(
-            [self.graph.nearest_node_id(c.x, c.y) for c in idle_couriers],
-            shop.node_id,
-            house.node_id
-        )
-        
-        available_courier_ids = [c.id for c in idle_couriers]
-        
-        # Выбираем курьера с помощью RL
-        chosen_courier_id = self.agent.choose_action(state_key, available_courier_ids)
-        courier = next(c for c in idle_couriers if c.id == chosen_courier_id)
-        
-        # Сохраняем информацию для будущего обновления Q-table
-        order.rl_state_key = state_key
-        order.rl_chosen_courier = chosen_courier_id
-        
-        # Назначаем заказ
-        order.assigned_courier_id = courier.id
-        order.status = "to_shop"
+        weight = getattr(order, "weight", 0.0)
 
-        shop = self._shop_by_id(order.shop_id)
-        assert shop.node_id is not None
-        start_node = self.graph.nearest_node_id(courier.x, courier.y)
-        path = self.graph.shortest_path(start_node, shop.node_id)
+        # 1. Курьеры, которые могут взять заказ по вместимости
+        eligible = []
+        for c in self.couriers:
+            if getattr(c, "max_capacity", 10.0) - getattr(c, "current_load", 0.0) >= weight:
+                eligible.append(c)
 
-        courier.state = "to_shop"
-        courier.current_order_id = order.id
-        courier.path = path
-        courier.path_index = 0
-        
-        self.log(
-            f"RL назначил курьера #{courier.id} на заказ #{order.id} (расстояние: {self._calculate_distance_cost(courier, order):.1f}м)"
-        )
+        if not eligible:
+            self.log(
+                f"Заказ #{order.id} (≈{order.weight:.1f} кг) ждёт курьера "
+                f"(нет свободной вместимости)"
+            )
+            return
+
+        # ----------------------------------------------------------------------
+        # 2. НЕЙРОСЕТЕВОЙ АГЕНТ
+        # ----------------------------------------------------------------------
+        if self.use_neural_agent and self.neural_agent is not None:
+            obs = self._build_neural_observation(order)
+
+            # нейросеть выбирает действие в пространстве {0..N-1}
+            available_actions = [c.id - 1 for c in eligible]   # превращаем courier.id → индекс
+            chosen_action = self.neural_agent.choose(obs, available_actions)
+
+            # корректируем обратно в courier.id
+            chosen_courier = next(c for c in self.couriers if c.id == chosen_action + 1)
+
+            self._assign_order_to_courier(chosen_courier, order)
+            return
+
+        # ----------------------------------------------------------------------
+        # 3. FALLBACK: случайный выбор подходящего курьера
+        # ----------------------------------------------------------------------
+        courier = random.choice(eligible)
+        self._assign_order_to_courier(courier, order)
+
 
     def _calculate_reward(self, order: OrderStatus, delivery_time: float) -> float:
         """Рассчитывает награду за доставку заказа"""
@@ -281,10 +350,11 @@ class Simulation:
             delivery_time = time.time() - self.order_statistics['order_start_times'].get(order.id, time.time())
             
             self.log(
-                f"Курьер #{courier.id} доставил заказ #{order.id} в дом {order.house_id} за {delivery_time:.1f}с"
+                f"Курьер #{courier.id} доставил заказ #{order.id} в дом {order.house_id} "
+                f"за {delivery_time:.1f}с"
             )
             
-            # Обновляем RL агента
+            # RL-агент (может пока ничего не обновить, это ок)
             self._update_rl_agent(order)
             
             self.order_statistics['completed_orders'] += 1
@@ -293,20 +363,33 @@ class Simulation:
             # Очищаем временные данные
             if order.id in self.order_statistics['order_start_times']:
                 del self.order_statistics['order_start_times'][order.id]
-            
-            courier.state = "idle"
+
+            # NEW: освобождаем часть вместимости курьера
+            if hasattr(order, "weight"):
+                courier.current_load = max(0.0, courier.current_load - order.weight)
+
             courier.current_order_id = None
             courier.path = []
             courier.path_index = 0
 
-            # Назначаем следующий ожидающий заказ
-            waiting_orders = [
+            # NEW: есть ли ещё заказы, уже закреплённые за этим курьером, но не начатые?
+            my_waiting_orders = [
                 o
                 for o in self.orders
-                if o.status == "waiting" and o.assigned_courier_id is None
+                if o.assigned_courier_id == courier.id and o.status == "waiting"
             ]
-            if waiting_orders:
-                self.assign_order_with_rl(waiting_orders[0])
+            if my_waiting_orders:
+                # Берём самый ранний по id (примерно FIFO)
+                next_order = sorted(my_waiting_orders, key=lambda o: o.id)[0]
+                self._start_order_for_courier(courier, next_order)
+                return  # не считаем курьера idle, он уже поехал за следующим заказом
+
+            # Если личной очереди нет — курьер действительно свободен
+            courier.state = "idle"
+
+            # NEW: после освобождения курьера пробуем раздать другие ожидающие заказы
+            self._assign_waiting_orders()
+
 
     def step(self):
         now = time.time()
@@ -324,10 +407,18 @@ class Simulation:
         self.orders = self.orders[-200:]
 
     def get_rl_stats(self) -> dict:
-        """Возвращает статистику RL обучения"""
+        """Возвращает статистику RL/нейросетевого агента"""
+        if self.agent is not None and hasattr(self.agent, "q_table"):
+            exploration_rate = getattr(self.agent, "exploration_rate", 0.0)
+            q_table_size = len(self.agent.q_table)
+        else:
+            # для нейросетевого агента показываем заглушки
+            exploration_rate = 0.0
+            q_table_size = 0
+
         return {
-            'exploration_rate': self.agent.exploration_rate,
-            'q_table_size': len(self.agent.q_table),
+            'exploration_rate': exploration_rate,
+            'q_table_size': q_table_size,
             'completed_orders': self.order_statistics['completed_orders'],
             'total_orders': self.order_statistics['total_orders'],
             'avg_delivery_time': (
@@ -335,6 +426,7 @@ class Simulation:
                 if self.order_statistics['completed_orders'] > 0 else 0
             )
         }
+
 
     def state(self) -> StateResponse:
         return StateResponse(
@@ -345,3 +437,32 @@ class Simulation:
             logs=self.logs[-100:],
             road_nodes=self.road_network.nodes,
         )
+        
+    def _start_order_for_courier(self, courier: Courier, order: OrderStatus):
+        """Запускает фактическое выполнение заказа курьером (едет в магазин)."""
+        shop = self._shop_by_id(order.shop_id)
+        assert shop.node_id is not None
+
+        start_node = self.graph.nearest_node_id(courier.x, courier.y)
+        path = self.graph.shortest_path(start_node, shop.node_id)
+
+        courier.state = "to_shop"
+        courier.current_order_id = order.id
+        courier.path = path
+        courier.path_index = 0
+        order.status = "to_shop"
+
+        self.log(
+            f"Курьер #{courier.id} назначен на заказ #{order.id}: "
+            f"магазин {order.shop_id} → дом {order.house_id} "
+            f"(нагрузка {courier.current_load:.1f}/{courier.max_capacity:.1f} кг)"
+        )
+
+    def _assign_waiting_orders(self):
+        """Пробуем распределить все незанятые заказы по курьерам с учётом вместимости."""
+        waiting_orders = [
+            o for o in self.orders
+            if o.status == "waiting" and o.assigned_courier_id is None
+        ]
+        for order in waiting_orders:
+            self.assign_order_with_rl(order)
