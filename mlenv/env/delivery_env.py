@@ -12,8 +12,8 @@ from .observation_builder import build_observation
 
 class DeliveryEnv:
     """
-    RL-среда поверх Simulation.
-    Агент принимает решение: какому курьеру назначить заказ.
+    RL environment on top of Simulation.
+    Agent makes decision: which courier to assign the order to.
     """
 
     def __init__(
@@ -34,7 +34,7 @@ class DeliveryEnv:
         self.invalid_action_penalty = invalid_action_penalty
         self.gamma = gamma
 
-        # размеры observation/action
+        # observation/action dimensions
         self.observation_dim = 5 + 7 * self.num_couriers
         self.num_actions = self.num_couriers
 
@@ -47,7 +47,7 @@ class DeliveryEnv:
         self.order_creation_time: Dict[int, float] = {}
         self.completed_orders: Set[int] = set()
 
-        # путь к backend/data
+        # path to backend/data
         self._data_dir = Path(__file__).resolve().parents[2] / "backend" / "data"
 
     # =========================================================================
@@ -55,9 +55,9 @@ class DeliveryEnv:
     # =========================================================================
 
     def reset(self) -> np.ndarray:
-        """Начало нового эпизода."""
+        """Start of new episode."""
 
-        # ИМПОРТИРУЕМ ТОЛЬКО ЗДЕСЬ — ЭТО ЛОМАЕТ ЦИКЛ ИЗ simulation.py
+        # IMPORT ONLY HERE — THIS BREAKS THE CYCLE FROM simulation.py
         from backend.simulation import Simulation
 
         self.sim = Simulation(self._data_dir)
@@ -65,7 +65,7 @@ class DeliveryEnv:
         cfg = Config(
             num_couriers=self.num_couriers,
             courier_speed=self.courier_speed,
-            orders_per_minute=0.0,  # генерацию заказов делаем сами
+            orders_per_minute=0.0,  # we generate orders ourselves
         )
         self.sim.set_config(cfg)
 
@@ -77,18 +77,18 @@ class DeliveryEnv:
         self.order_creation_time.clear()
         self.completed_orders.clear()
 
-        # создаём первый заказ
+        # create first order
         self.current_order = self._create_random_order()
         obs = build_observation(self.sim, self.current_order, self.num_couriers)
         return obs
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         """
-        Один шаг среды:
-        1) присвоить заказ action-курьеру
-        2) промотать симуляцию
-        3) собрать награды
-        4) создать новый заказ
+        One environment step:
+        1) assign order to action-courier
+        2) advance simulation
+        3) collect rewards
+        4) create new order
         """
         if self.done:
             raise RuntimeError("Episode finished — call reset().")
@@ -96,7 +96,7 @@ class DeliveryEnv:
         total_reward = 0.0
         info = {}
 
-        # 1) назначение
+        # 1) assignment
         self._assign_order_with_action(
             action,
             invalid_flag_out=lambda bad: info.update({"invalid_action": bad})
@@ -104,14 +104,14 @@ class DeliveryEnv:
         if info.get("invalid_action", False):
             total_reward += self.invalid_action_penalty
 
-        # 2) проматываем симуляцию
+        # 2) advance simulation
         dt = self._sample_interarrival_time()
         total_reward += self._advance_and_collect_rewards(dt)
         self.current_time += dt
 
         self.episode_orders_generated += 1
 
-        # 3) окончание эпизода
+        # 3) episode end
         if (
             self.episode_orders_generated >= self.max_episode_orders
             or self.current_time >= self.max_episode_time
@@ -119,7 +119,7 @@ class DeliveryEnv:
             self.done = True
             return np.zeros(self.observation_dim, dtype=np.float32), total_reward, True, info
 
-        # 4) создаём новый заказ
+        # 4) create new order
         self.current_order = self._create_random_order()
         next_obs = build_observation(self.sim, self.current_order, self.num_couriers)
         return next_obs, total_reward, False, info
@@ -129,14 +129,14 @@ class DeliveryEnv:
     # =========================================================================
 
     def _sample_interarrival_time(self) -> float:
-        """Экспоненциальное распределение между заказами."""
+        """Exponential distribution between orders."""
         lam = self.orders_per_minute / 60.0
         if lam <= 0:
             return 10.0
         return random.expovariate(lam)
 
     def _advance_and_collect_rewards(self, dt_total: float) -> float:
-        """Продвигаем симуляцию и собираем награды."""
+        """Advance simulation and collect rewards."""
         reward_sum = 0.0
         dt_step = 1.0
         t = dt_total
@@ -145,7 +145,7 @@ class DeliveryEnv:
             dt = min(dt_step, t)
             t -= dt
 
-            # двигаем курьеров
+            # move couriers
             for c in self.sim.couriers:
                 self.sim._move_courier_along_path(c, dt)
                 self.sim._update_courier_state(c)
@@ -155,7 +155,7 @@ class DeliveryEnv:
         return reward_sum
 
     def _collect_completion_rewards(self) -> float:
-        """Награда за завершённые заказы."""
+        """Reward for completed orders."""
         reward = 0.0
         for o in self.sim.orders:
             if o.status == "done" and o.id not in self.completed_orders:
@@ -164,7 +164,7 @@ class DeliveryEnv:
                 created = self.order_creation_time.get(o.id, 0.0)
                 delivery_time = max(0, self.current_time - created)
 
-                # ДЕЛАЕМ НАГРАДУ СИЛЬНЕЕ — ЛУЧШЕ ДЛЯ ГРАФИКОВ
+                # MAKE REWARD STRONGER — BETTER FOR GRAPHS
                 base = 20.0
                 time_penalty = -0.2 * (delivery_time / 60.0)
 
@@ -173,7 +173,7 @@ class DeliveryEnv:
         return reward
 
     def _create_random_order(self) -> OrderStatus:
-        """Создаём заказ без автопривязки."""
+        """Create order without auto-assignment."""
         shop = random.choice(self.sim.shops)
         house = random.choice(self.sim.houses)
         weight = max(0.5, random.gauss(3.0, 1.0))
@@ -190,7 +190,7 @@ class DeliveryEnv:
         return order
 
     def _assign_order_with_action(self, action: int, invalid_flag_out):
-        """Назначает заказ курьеру, проверяет корректность."""
+        """Assigns order to courier, checks correctness."""
         order = self.current_order
         weight = order.weight or 0.0
 

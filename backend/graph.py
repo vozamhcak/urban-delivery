@@ -22,7 +22,7 @@ class Graph:
             v = nodes_by_id[v_id]
             dist = math.dist((u.x, u.y), (v.x, v.y))
             self.adj[u_id].append((v_id, dist))
-            self.adj[v_id].append((u_id, dist))  # считаем дороги двусторонними
+            self.adj[v_id].append((u_id, dist))  # consider roads bidirectional
 
     def nearest_node_id(self, x: float, y: float) -> int:
         best_id = self.network.nodes[0].id
@@ -67,7 +67,7 @@ class Graph:
         return path
 
     def shortest_path_length(self, start_id: int, end_id: int) -> float:
-        """Вычисляет длину кратчайшего пути между двумя узлами"""
+        """Calculates the length of the shortest path between two nodes"""
         import heapq
 
         dist: Dict[int, float] = {node.id: float("inf") for node in self.network.nodes}

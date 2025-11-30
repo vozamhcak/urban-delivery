@@ -5,7 +5,7 @@ import torch.nn as nn
 
 class PolicyNetwork(nn.Module):
     """
-    Простая MLP-сеть для DQN: Q(s, a) для каждого курьера.
+    Simple MLP network for DQN: Q(s, a) for each courier.
     """
 
     def __init__(self, obs_dim: int, num_actions: int, hidden_sizes=(128, 128)):

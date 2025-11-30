@@ -48,7 +48,7 @@ class DQNAgent:
         batch_dones: np.ndarray,
     ) -> float:
         """
-        Один шаг обучения по mini-batch.
+        One training step on mini-batch.
         """
         obs_t = torch.tensor(batch_obs, dtype=torch.float32, device=self.device)
         actions_t = torch.tensor(batch_actions, dtype=torch.long, device=self.device)
@@ -56,11 +56,11 @@ class DQNAgent:
         next_obs_t = torch.tensor(batch_next_obs, dtype=torch.float32, device=self.device)
         dones_t = torch.tensor(batch_dones, dtype=torch.float32, device=self.device)
 
-        # Q(s, a) для выбранных действий
+        # Q(s, a) for selected actions
         q_values = self.q_net(obs_t)
         q_values = q_values.gather(1, actions_t.unsqueeze(1)).squeeze(1)
 
-        # таргеты: r + γ * max_a' Q_target(s', a') * (1 - done)
+        # targets: r + γ * max_a' Q_target(s', a') * (1 - done)
         with torch.no_grad():
             next_q_values = self.target_net(next_obs_t).max(dim=1)[0]
             targets = rewards_t + self.gamma * next_q_values * (1.0 - dones_t)

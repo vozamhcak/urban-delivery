@@ -40,14 +40,14 @@ class NeuralCourierAgent:
         available_actions: список ID курьеров, которые доступны
         """
 
-        # forward
+        # forward pass
         x = torch.tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
         with torch.no_grad():
             q = self.net(x)[0].cpu().numpy()
 
-        # маска доступности
+        # availability mask
         masked_q = {a: q[a] for a in available_actions}
 
-        # выбираем действие с максимальным Q
+        # select action with maximum Q
         best = max(masked_q.items(), key=lambda x: x[1])[0]
         return int(best)

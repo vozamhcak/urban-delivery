@@ -3,7 +3,7 @@ import React from "react";
 export default function LogPanel({ logs }) {
   return (
     <div className="log-panel">
-      <h3>Логи</h3>
+      <h3>Logs</h3>
       <div className="log-list">
         {logs && logs.length > 0 ? (
           logs
@@ -18,7 +18,7 @@ export default function LogPanel({ logs }) {
               </div>
             ))
         ) : (
-          <div className="log-empty">Пока нет событий</div>
+          <div className="log-empty">No events yet</div>
         )}
       </div>
     </div>

@@ -4,9 +4,9 @@ export default function StatusBar({ error }) {
   return (
     <div className="status-bar">
       {error ? (
-        <span className="status-error">Ошибка: {error}</span>
+        <span className="status-error">Error: {error}</span>
       ) : (
-        <span className="status-ok">Backend: OK (обновление по опросу)</span>
+        <span className="status-ok">Backend: OK (polling updates)</span>
       )}
     </div>
   );

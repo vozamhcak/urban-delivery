@@ -5,8 +5,8 @@ import numpy as np
 
 def build_observation(sim, order, num_couriers: int) -> np.ndarray:
     """
-    Строит вектор наблюдения фиксированной длины.
-    Формат:
+    Builds fixed-length observation vector.
+    Format:
     [ order_features (5),
       courier_1_features (7),
       ...,

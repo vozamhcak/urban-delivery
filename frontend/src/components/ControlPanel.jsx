@@ -4,7 +4,7 @@ export default function ControlPanel({ config, onChange, onSubmit }) {
   return (
     <div className="control-panel">
       <div className="field">
-        <label>Количество курьеров</label>
+        <label>Number of couriers</label>
         <input
           type="number"
           min="1"
@@ -14,7 +14,7 @@ export default function ControlPanel({ config, onChange, onSubmit }) {
         />
       </div>
       <div className="field">
-        <label>Скорость курьеров (м/с)</label>
+        <label>Courier speed (m/s)</label>
         <input
           type="number"
           min="0.1"
@@ -24,7 +24,7 @@ export default function ControlPanel({ config, onChange, onSubmit }) {
         />
       </div>
       <div className="field">
-        <label>Заказов в минуту</label>
+        <label>Orders per minute</label>
         <input
           type="number"
           min="0"
@@ -34,7 +34,7 @@ export default function ControlPanel({ config, onChange, onSubmit }) {
         />
       </div>
       <button className="btn" onClick={onSubmit}>
-        Применить
+        Apply
       </button>
     </div>
   );

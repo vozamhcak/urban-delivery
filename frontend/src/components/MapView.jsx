@@ -4,8 +4,8 @@ import { getStaticImageUrl } from "../api";
 const MAP_SIZE = 900;
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 4.0;
-const ZOOM_SENSITIVITY = 0.002; // Увеличена чувствительность для более плавного зума
-const EXTRA_PAN_SPACE = 3000; // Дополнительное пространство для панорамирования вправо и вниз (на максимальном зуме)
+const ZOOM_SENSITIVITY = 0.002; // Increased sensitivity for smoother zoom
+const EXTRA_PAN_SPACE = 3000; // Extra space for panning right and down (at maximum zoom)
 
 export default function MapView({
   houses,
@@ -24,9 +24,9 @@ export default function MapView({
   const touchStartRef = useRef(null);
   const lastTouchDistance = useRef(0);
   const isPinching = useRef(false);
-  const hasDragged = useRef(false); // Флаг для отслеживания перетаскивания
+  const hasDragged = useRef(false); // Flag for tracking dragging
 
-  // Ограничение смещения, чтобы карта не уходила слишком далеко
+  // Constrain offset so map doesn't go too far
   const constrainOffset = (newOffset, currentScale) => {
     const container = containerRef.current;
     if (!container) return newOffset;
@@ -34,19 +34,19 @@ export default function MapView({
     const containerRect = container.getBoundingClientRect();
     const scaledMapSize = MAP_SIZE * currentScale;
 
-    // Дополнительное пространство масштабируется с уровнем зума
-    // На максимальном зуме даем больше места для навигации по краям
-    // Используем квадратичную зависимость для более плавного увеличения на больших масштабах
+    // Extra space scales with zoom level
+    // At maximum zoom, give more space for edge navigation
+    // Use quadratic dependency for smoother increase at large scales
     const scaleFactor = Math.pow(currentScale / MAX_SCALE, 1.5);
     const extraSpace = EXTRA_PAN_SPACE * scaleFactor;
 
-    // Если карта меньше контейнера, центрируем её
+    // If map is smaller than container, center it
     if (scaledMapSize <= containerRect.width) {
       newOffset.x = (containerRect.width - scaledMapSize) / 2;
     } else {
       const maxOffsetX = (scaledMapSize - containerRect.width) / 2;
-      // Расширяем границы для движения влево (отрицательное x) и вправо (положительное x)
-      // Позволяем сдвинуть карту так, чтобы можно было пройтись по всем краям
+      // Extend boundaries for movement left (negative x) and right (positive x)
+      // Allow map shift so we can navigate all edges
       const minOffsetXExtended = -(scaledMapSize - containerRect.width) - extraSpace;
       const maxOffsetXExtended = scaledMapSize - containerRect.width + extraSpace;
       newOffset.x = Math.max(minOffsetXExtended, Math.min(maxOffsetXExtended, newOffset.x));
@@ -56,8 +56,8 @@ export default function MapView({
       newOffset.y = (containerRect.height - scaledMapSize) / 2;
     } else {
       const maxOffsetY = (scaledMapSize - containerRect.height) / 2;
-      // Расширяем границы для движения вверх (отрицательное y) и вниз (положительное y)
-      // Позволяем сдвинуть карту так, чтобы можно было пройтись по всем краям
+      // Extend boundaries for movement up (negative y) and down (positive y)
+      // Allow map shift so we can navigate all edges
       const minOffsetYExtended = -(scaledMapSize - containerRect.height) - extraSpace;
       const maxOffsetYExtended = scaledMapSize - containerRect.height + extraSpace;
       newOffset.y = Math.max(minOffsetYExtended, Math.min(maxOffsetYExtended, newOffset.y));
@@ -66,21 +66,21 @@ export default function MapView({
     return newOffset;
   };
 
-  // Зум к точке курсора и панорамирование тачпадом
+  // Zoom to cursor point and trackpad panning
   const handleWheel = (e) => {
     e.preventDefault();
     const container = containerRef.current;
     if (!container) return;
 
-    // Определяем, это зум или панорамирование
-    // Зум: Ctrl/Cmd зажат (пинч на Mac), есть deltaZ, или только вертикальная прокрутка (колесико мыши)
-    // Панорамирование: есть значительная горизонтальная прокрутка без Ctrl/Cmd (двухпальцевая прокрутка на тачпаде)
+    // Determine if this is zoom or panning
+    // Zoom: Ctrl/Cmd held (pinch on Mac), has deltaZ, or only vertical scroll (mouse wheel)
+    // Panning: has significant horizontal scroll without Ctrl/Cmd (two-finger scroll on trackpad)
     const isZoomGesture = e.ctrlKey || e.metaKey || Math.abs(e.deltaZ) > 0;
     const hasSignificantHorizontalScroll = Math.abs(e.deltaX) > 10 && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 0.7;
     const isPan = hasSignificantHorizontalScroll && !isZoomGesture;
 
     if (isPan) {
-      // Двухпальцевое панорамирование на тачпаде (горизонтальная/вертикальная прокрутка)
+      // Two-finger panning on trackpad (horizontal/vertical scroll)
       setOffset((prev) => constrainOffset(
         {
           x: prev.x - e.deltaX,
@@ -89,30 +89,30 @@ export default function MapView({
         scale
       ));
     } else {
-      // Зум колесиком мыши или пинч-жестом на тачпаде
+      // Zoom with mouse wheel or pinch gesture on trackpad
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      // Вычисляем точку на карте до зума
+      // Calculate point on map before zoom
       const pointBeforeZoom = {
         x: (mouseX - offset.x) / scale,
         y: (mouseY - offset.y) / scale,
       };
 
-      // Вычисляем новый масштаб
-      // Для приближения: deltaY < 0 (прокрутка вверх или разведение пальцев на тачпаде)
-      // Для отдаления: deltaY > 0 (прокрутка вниз или сведение пальцев на тачпаде)
-      // На тачпаде с Ctrl/Cmd: отрицательный deltaY = разведение = приближение
+      // Calculate new scale
+      // For zoom in: deltaY < 0 (scroll up or pinch out on trackpad)
+      // For zoom out: deltaY > 0 (scroll down or pinch in on trackpad)
+      // On trackpad with Ctrl/Cmd: negative deltaY = pinch out = zoom in
       const zoomDelta = e.deltaY * ZOOM_SENSITIVITY;
       const zoomFactor = 1 - zoomDelta;
       let newScale = scale * zoomFactor;
 
-      // Ограничиваем масштаб
+      // Constrain scale
       if (newScale < MIN_SCALE) newScale = MIN_SCALE;
       if (newScale > MAX_SCALE) newScale = MAX_SCALE;
 
-      // Вычисляем новое смещение, чтобы точка под курсором осталась на месте
+      // Calculate new offset so point under cursor stays in place
       const newOffset = {
         x: mouseX - pointBeforeZoom.x * newScale,
         y: mouseY - pointBeforeZoom.y * newScale,
@@ -124,8 +124,8 @@ export default function MapView({
   };
 
   const handleMouseDown = (e) => {
-    // Разрешаем перетаскивание везде, кроме кликов на интерактивные элементы
-    // Интерактивные элементы: курьеры (circle с классом courier-dot или courier-selected)
+    // Allow dragging everywhere except clicks on interactive elements
+    // Interactive elements: couriers (circle with class courier-dot or courier-selected)
     const target = e.target;
     const isCourier =
       (target.tagName === 'circle' &&
@@ -133,12 +133,12 @@ export default function MapView({
           target.classList.contains('courier-selected'))) ||
       (target.tagName === 'text' && target.closest('g')?.querySelector('circle.courier-dot, circle.courier-selected'));
 
-    // Если клик на курьере, не начинаем перетаскивание (разрешаем выбор курьера)
+    // If click on courier, don't start dragging (allow courier selection)
     if (isCourier) {
       return;
     }
 
-    // Предотвращаем выделение текста при перетаскивании
+    // Prevent text selection during dragging
     e.preventDefault();
     dragging.current = true;
     hasDragged.current = false;
@@ -151,7 +151,7 @@ export default function MapView({
     const dx = e.clientX - lastPos.current.x;
     const dy = e.clientY - lastPos.current.y;
 
-    // Если перемещение больше 3 пикселей, считаем это перетаскиванием
+    // If movement is more than 3 pixels, consider it dragging
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       hasDragged.current = true;
     }
@@ -166,7 +166,7 @@ export default function MapView({
   const handleMouseUp = (e) => {
     if (dragging.current) {
       dragging.current = false;
-      // Если было перетаскивание, предотвращаем клик
+      // If there was dragging, prevent click
       if (hasDragged.current) {
         e.preventDefault();
         e.stopPropagation();
@@ -175,7 +175,7 @@ export default function MapView({
     }
   };
 
-  // Поддержка жестов тачпада (двумя пальцами)
+  // Trackpad gesture support (two fingers)
   const getTouchDistance = (touch1, touch2) => {
     const dx = touch1.clientX - touch2.clientX;
     const dy = touch1.clientY - touch2.clientY;
@@ -203,7 +203,7 @@ export default function MapView({
         scale: scale,
       };
     } else if (e.touches.length === 1) {
-      // Одиночное касание для панорамирования
+      // Single touch for panning
       dragging.current = true;
       lastPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     }
@@ -225,22 +225,22 @@ export default function MapView({
         const centerX = center.x - rect.left;
         const centerY = center.y - rect.top;
 
-        // Вычисляем масштаб на основе изменения расстояния между пальцами
+        // Calculate scale based on change in distance between fingers
         const scaleChange = distance / lastTouchDistance.current;
         let newScale = touchStartRef.current.scale * scaleChange;
         newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
 
-        // Используем текущие значения offset и scale для более точных вычислений
+        // Use current offset and scale values for more accurate calculations
         const currentOffset = offset;
         const currentScale = scale;
 
-        // Вычисляем точку на карте до зума (относительно начального состояния жеста)
+        // Calculate point on map before zoom (relative to initial gesture state)
         const pointBeforeZoom = {
           x: (centerX - touchStartRef.current.offset.x) / touchStartRef.current.scale,
           y: (centerY - touchStartRef.current.offset.y) / touchStartRef.current.scale,
         };
 
-        // Вычисляем новое смещение, чтобы точка между пальцами осталась на месте
+        // Calculate new offset so point between fingers stays in place
         const newOffset = {
           x: centerX - pointBeforeZoom.x * newScale,
           y: centerY - pointBeforeZoom.y * newScale,
@@ -249,7 +249,7 @@ export default function MapView({
         setScale(newScale);
         setOffset((prev) => {
           const constrained = constrainOffset(newOffset, newScale);
-          // Обновляем touchStartRef для следующего движения
+          // Update touchStartRef for next movement
           if (touchStartRef.current) {
             touchStartRef.current.offset = constrained;
             touchStartRef.current.scale = newScale;
@@ -281,7 +281,7 @@ export default function MapView({
   };
 
   const handleBackgroundClick = (e) => {
-    // Игнорируем клик, если было перетаскивание
+    // Ignore click if there was dragging
     if (hasDragged.current) {
       e.preventDefault();
       e.stopPropagation();
@@ -292,7 +292,7 @@ export default function MapView({
     }
   };
 
-  // Центрируем карту при первой загрузке
+  // Center map on first load
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -313,7 +313,7 @@ export default function MapView({
         y: (containerRect.height - scaledMapSize) / 2
       }));
     }
-  }, []); // Только при монтировании компонента
+  }, []); // Only on component mount
 
 
   const activeOrders = orders.filter((o) => o.status !== "done");
@@ -411,14 +411,14 @@ export default function MapView({
             height={MAP_SIZE}
           />
 
-          {/* подсветка маршрута выбранного курьера */}
+          {/* highlight selected courier route */}
           {selectedPathPolyline}
 
-          {/* подсветка магазина и дома */}
+          {/* highlight shop and house */}
           {highlightShop}
           {highlightHouse}
 
-          {/* дома */}
+          {/* houses */}
           {houses.map((h) => (
             <circle
               key={`house-${h.id}`}
@@ -427,11 +427,11 @@ export default function MapView({
               r={3}
               className="house-dot"
             >
-              <title>Дом #{h.id}</title>
+              <title>House #{h.id}</title>
             </circle>
           ))}
 
-          {/* магазины */}
+          {/* shops */}
           {shops.map((s) => (
             <rect
               key={`shop-${s.id}`}
@@ -441,29 +441,29 @@ export default function MapView({
               height={8}
               className="shop-dot"
             >
-              <title>Магазин #{s.id}</title>
+              <title>Shop #{s.id}</title>
             </rect>
           ))}
 
-          {/* курьеры */}
+          {/* couriers */}
           {couriers.map((c) => {
             const selected = c.id === selectedCourierId;
             const order = c.current_order_id
               ? orderById.get(c.current_order_id)
               : null;
 
-            // NEW: аккуратный tooltip с учётом загрузки и веса заказа
+            // NEW: careful tooltip with load and order weight
             const currentLoad = (c.current_load || 0).toFixed(1);
             const maxCapacity = (c.max_capacity || 0).toFixed(1);
             const tooltip = order
-              ? `Курьер #${c.id}
-Состояние: ${c.state}
-Загрузка: ${currentLoad} / ${maxCapacity} кг
-Текущий заказ #${order.id}, статус: ${order.status}, вес: ${(order.weight || 0).toFixed(1)} кг`
-              : `Курьер #${c.id}
-Состояние: ${c.state}
-Загрузка: ${currentLoad} / ${maxCapacity} кг
-Текущий заказ: нет`;
+              ? `Courier #${c.id}
+State: ${c.state}
+Load: ${currentLoad} / ${maxCapacity} kg
+Current order #${order.id}, status: ${order.status}, weight: ${(order.weight || 0).toFixed(1)} kg`
+              : `Courier #${c.id}
+State: ${c.state}
+Load: ${currentLoad} / ${maxCapacity} kg
+Current order: none`;
 
             return (
               <g key={`courier-${c.id}`}>

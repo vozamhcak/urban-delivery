@@ -57,13 +57,13 @@ body,
   cursor: grabbing;
 }
 
-/* Интерактивные элементы карты */
+/* Interactive map elements */
 .map-view circle.courier-dot,
 .map-view circle.courier-selected {
   cursor: pointer;
 }
 
-/* точки на карте */
+/* map points */
 
 .house-dot {
   fill: rgba(0, 200, 255, 0.9);
@@ -91,7 +91,7 @@ body,
   stroke-width: 0.8;
 }
 
-/* путь курьера */
+/* courier path */
 
 .courier-path-line {
   fill: none;
@@ -100,7 +100,7 @@ body,
   opacity: 0.9;
 }
 
-/* подсветка магазина и дома */
+/* shop and house highlighting */
 
 .highlight-shop {
   fill: none;

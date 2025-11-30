@@ -19,7 +19,7 @@ export default function App() {
 
   const [selectedCourierId, setSelectedCourierId] = useState(null);
 
-  // поллинг состояния симуляции
+  // polling simulation state
   useEffect(() => {
     let cancelled = false;
 
@@ -32,7 +32,7 @@ export default function App() {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e.message || "Ошибка сервера");
+          setError(e.message || "Server error");
         }
       }
       if (!cancelled) {
@@ -46,7 +46,7 @@ export default function App() {
     };
   }, []);
 
-  // отдельная загрузка конфига (не зависит от поллинга)
+  // separate config loading (independent of polling)
   useEffect(() => {
     let cancelled = false;
 
@@ -62,7 +62,7 @@ export default function App() {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e.message || "Не удалось загрузить конфигурацию");
+          setError(e.message || "Failed to load configuration");
         }
       }
     }
@@ -88,14 +88,14 @@ export default function App() {
         orders_per_minute: Number(configDraft.orders_per_minute),
       };
       const updated = await updateConfig(cfg);
-      // после обновления синхронизируем черновик с подтверждённым конфигом
+      // after update, synchronize draft with confirmed config
       setConfigDraft({
         num_couriers: updated.num_couriers,
         courier_speed: updated.courier_speed,
         orders_per_minute: updated.orders_per_minute,
       });
     } catch (e) {
-      setError(e.message || "Не удалось обновить конфигурацию");
+      setError(e.message || "Failed to update configuration");
     }
   };
 
@@ -115,12 +115,12 @@ export default function App() {
             />
           ) : (
             <div className="centered-message">
-              Загрузка состояния симуляции...
+              Loading simulation state...
             </div>
           )}
         </div>
         <div className="sidebar">
-          <h2>Настройки симуляции</h2>
+          <h2>Simulation Settings</h2>
           <ControlPanel
             config={configDraft}
             onChange={handleConfigChange}

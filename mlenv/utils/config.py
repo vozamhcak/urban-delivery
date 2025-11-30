@@ -10,7 +10,7 @@ class TrainingConfig:
     max_episode_time: float = 1800.0
 
     total_episodes: int = 500
-    max_steps_per_episode: int = 200  # защитный лимит
+    max_steps_per_episode: int = 200  # safety limit
 
     gamma: float = 0.99
     lr: float = 1e-3

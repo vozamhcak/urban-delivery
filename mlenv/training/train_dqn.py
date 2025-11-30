@@ -14,8 +14,8 @@ from mlenv.utils import TrainingConfig, save_model
 
 def epsilon_by_episode(cfg: TrainingConfig, episode: int) -> float:
     """
-    Линейное уменьшение eps от epsilon_start до epsilon_end
-    в течение epsilon_decay_episodes. После этого фиксируем epsilon_end.
+    Linear decrease of eps from epsilon_start to epsilon_end
+    over epsilon_decay_episodes. After that, fix epsilon_end.
     """
     if episode >= cfg.epsilon_decay_episodes:
         return cfg.epsilon_end
@@ -25,9 +25,9 @@ def epsilon_by_episode(cfg: TrainingConfig, episode: int) -> float:
 
 def plot_rewards(episode_rewards, window, out_path):
     """
-    Рисуем график:
-    - сырые награды по эпизодам
-    - скользящее среднее по окну window
+    Draws graph:
+    - raw rewards by episodes
+    - moving average over window
     """
     if len(episode_rewards) == 0:
         return
@@ -35,7 +35,7 @@ def plot_rewards(episode_rewards, window, out_path):
     episodes = np.arange(1, len(episode_rewards) + 1)
     rewards = np.array(episode_rewards, dtype=np.float32)
 
-    # скользящее среднее
+    # moving average
     if len(rewards) >= window:
         kernel = np.ones(window, dtype=np.float32) / window
         moving_avg = np.convolve(rewards, kernel, mode="valid")
@@ -62,14 +62,14 @@ def plot_rewards(episode_rewards, window, out_path):
 def main():
     cfg = TrainingConfig()
 
-    # переопределяем количество эпизодов под задачу презентации
+    # override number of episodes for presentation task
     cfg.total_episodes = 10_000
 
-    # чтобы импорт backend корректно работал, запускать из корня проекта:
+    # for backend import to work correctly, run from project root:
     # python -m mlenv.training.train_dqn
     print("Using device:", cfg.device)
 
-    # директории для логов, чекпоинтов и графиков
+    # directories for logs, checkpoints and plots
     os.makedirs("mlenv_logs", exist_ok=True)
     os.makedirs(os.path.dirname(cfg.checkpoint_path), exist_ok=True)
     plots_dir = "mlenv_plots"
@@ -96,7 +96,7 @@ def main():
     buffer = ReplayBuffer(obs_dim=env.observation_dim, capacity=cfg.replay_capacity)
 
     total_steps = 0
-    episode_rewards = []  # храним награды для рисования графика
+    episode_rewards = []  # store rewards for plotting graph
 
     start_time = time.time()
 
@@ -120,7 +120,7 @@ def main():
             episode_steps += 1
             total_steps += 1
 
-            # обучение после накопления достаточного количества переходов
+            # training after accumulating enough transitions
             if buffer.size >= cfg.start_learning_after and total_steps % cfg.train_every_step == 0:
                 batch_obs, batch_actions, batch_rewards, batch_next_obs, batch_dones = buffer.sample(
                     cfg.batch_size
@@ -134,11 +134,11 @@ def main():
                 )
                 episode_loss += loss
 
-            # обновляем target-сеть
+            # update target network
             if total_steps % cfg.target_update_every == 0:
                 agent.update_target()
 
-        # логируем результаты эпизода
+        # log episode results
         episode_rewards.append(episode_reward)
         avg_loss = episode_loss / max(1, episode_steps)
         elapsed = time.time() - start_time
@@ -153,18 +153,18 @@ def main():
             f"time={elapsed/60:.1f} min"
         )
 
-        # каждые 500 эпизодов — сохраняем модель и график
+        # every 500 episodes — save model and graph
         if episode % 500 == 0:
-            # чекпоинт модели
+            # model checkpoint
             save_model(agent.q_net, cfg.checkpoint_path)
             print(f"Checkpoint saved to {cfg.checkpoint_path}")
 
-            # график наград с начала и до текущего эпизода
+            # reward graph from start to current episode
             plot_path = os.path.join(plots_dir, f"rewards_{episode:05d}.png")
             plot_rewards(episode_rewards, window=100, out_path=plot_path)
             print(f"Reward plot saved to {plot_path}")
 
-    # финальная сохранённая модель
+    # final saved model
     save_model(agent.q_net, cfg.checkpoint_path)
     final_plot_path = os.path.join(plots_dir, f"rewards_final_{cfg.total_episodes:05d}.png")
     plot_rewards(episode_rewards, window=100, out_path=final_plot_path)
